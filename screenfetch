@@ -1,0 +1,1695 @@
+}')
+				fi
+			fi
+
+			if [[ ${DE} == "Not Present" ]]; then
+				# Let's use xdg-open code for GNOME/Enlightment/KDE/LXDE/MATE/XFCE detection
+				# http://bazaar.launchpad.net/~vcs-imports/xdg-utils/master/view/head:/scripts/xdg-utils-common.in#L251
+				if [ -n "${XDG_CURRENT_DESKTOP}" ]; then
+					case "${XDG_CURRENT_DESKTOP}" in
+						ENLIGHTENMENT)
+							DE=Enlightenment;
+							;;
+						GNOME)
+							DE=GNOME;
+							;;
+						KDE)
+							DE=KDE;
+							;;
+						LUMINA|Lumina)
+							DE=Lumina;
+							;;
+						LXDE)
+							DE=LXDE;
+							;;
+						MATE)
+							DE=MATE;
+							;;
+						XFCE)
+							DE=XFCE
+							;;
+						'X-Cinnamon')
+							DE=Cinnamon
+							;;
+						Unity)
+							DE=Unity
+							;;
+						LXQt)
+							DE=LXQt
+							;;
+					esac
+				fi
+
+				if [ -n "$DE" ]; then
+					# classic fallbacks
+					if [ -n "$KDE_FULL_SESSION" ]; then DE=KDE;
+					elif [ -n "$TDE_FULL_SESSION" ]; then DE=Trinity;
+					elif [ -n "$GNOME_DESKTOP_SESSION_ID" ]; then DE=GNOME;
+					elif [ -n "$MATE_DESKTOP_SESSION_ID" ]; then DE=MATE;
+					elif `dbus-send --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetNameOwner string:org.gnome.SessionManager > /dev/null 2>&1` ; then DE=GNOME;
+					elif xprop -root _DT_SAVE_MODE 2> /dev/null | grep ' = \"xfce4\"$' >/dev/null 2>&1; then DE=XFCE;
+					elif xprop -root 2> /dev/null | grep -i '^xfce_desktop_window' >/dev/null 2>&1; then DE=XFCE
+					elif echo $DESKTOP | grep -q '^Enlightenment'; then DE=Enlightenment;
+					fi
+				fi
+
+				case "$DESKTOP_SESSION" in
+					gnome|gnome-fallback|gnome-fallback-compiz )
+						DE=GNOME
+						;;
+					deepin)
+						DE=Deepin
+						;;
+				esac
+
+				if [ -n "$DE" ]; then
+					# fallback to checking $DESKTOP_SESSION
+					case "$DESKTOP_SESSION" in
+						gnome)
+							DE=GNOME;
+							;;
+						LUMINA|Lumina)
+							DE=Lumina;
+							;;
+						LXDE|Lubuntu)
+							DE=LXDE;
+							;;
+						MATE)
+							DE=MATE;
+							;;
+						xfce|xfce4|'Xfce Session')
+							DE=XFCE;
+							;;
+						'budgie-desktop')
+							DE=Budgie
+							;;
+						Cinnamon)
+							DE=Cinnamon
+							;;
+						trinity)
+							DE=Trinity
+							;;
+					esac
+				fi
+
+				if [ -n "$DE" ]; then
+					# fallback to checking $GDMSESSION
+					case "$GDMSESSION" in
+						Lumina*|LUMINA*|lumina*)
+							DE=Lumina
+							;;
+						MATE|mate)
+							DE=MATE
+							;;
+					esac
+				fi
+
+				if [[ ${DE} == "GNOME" ]]; then
+					if type -p xprop >/dev/null 2>&1; then
+						if xprop -name "unity-launcher" >/dev/null 2>&1; then
+							DE="Unity"
+						elif xprop -name "launcher" >/dev/null 2>&1 &&
+							xprop -name "panel" >/dev/null 2>&1; then
+
+							DE="Unity"
+						fi
+					fi
+				fi
+
+				if [[ ${DE} == "KDE" ]]; then
+					if [[ -n ${KDE_SESSION_VERSION} ]]; then
+						if [[ ${KDE_SESSION_VERSION} == '5' ]]; then
+							DE="KDE5"
+						elif [[ ${KDE_SESSION_VERSION} == '4' ]]; then
+							DE="KDE4"
+						fi
+					elif [[ "x${KDE_FULL_SESSION}" == "xtrue" ]]; then
+						DE="KDE"
+						DEver_data=$(kded --version 2>/dev/null)
+						DEver=$(grep -si '^KDE:' <<< "$DEver_data" | awk '{print $2}')
+					fi
+				fi
+			fi
+
+			if [[ ${DE} != "Not Present" ]]; then
+				if [[ ${DE} == "Cinnamon" ]]; then
+					if type -p >/dev/null 2>&1; then
+						DEver=$(cinnamon --version)
+						DE="${DE} ${DEver//* }"
+					fi
+				elif [[ ${DE} == "GNOME" ]]; then
+					if type -p gnome-session >/dev/null 2>&1; then
+						DEver=$(gnome-session --version 2> /dev/null)
+						DE="${DE} ${DEver//* }"
+					elif type -p gnome-session-properties >/dev/null 2>&1; then
+						DEver=$(gnome-session-properties --version 2> /dev/null)
+						DE="${DE} ${DEver//* }"
+					fi
+				elif [[ ${DE} == "KDE4" || ${DE} == "KDE5" ]]; then
+					if type -p kded${DE#KDE} >/dev/null 2>&1; then
+						DEver=$(kded${DE#KDE} --version)
+						if [[ $(( $(echo "$DEver" | wc -w) )) -eq 2 ]] && [[ "$(echo "$DEver" | cut -d ' ' -f1)" == "kded${DE#KDE}" ]]; then
+							DEver=$(echo "$DEver" | cut -d ' ' -f2)
+							DE="KDE ${DEver}"
+						else
+							for l in $(echo "${DEver// /_}"); do
+								if [[ ${l//:*} == "KDE_Development_Platform" ]]; then
+									DEver=${l//*:_}
+									DE="KDE ${DEver//_*}"
+								fi
+							done
+						fi
+						if pgrep plasmashell >/dev/null 2>&1; then
+							DEver=$(plasmashell --version | cut -d ' ' -f2)
+							DE="$DE / Plasma $DEver"
+						fi
+					fi
+				elif [[ ${DE} == "Lumina" ]]; then
+					if type -p Lumina-DE.real >/dev/null 2>&1; then
+						lumina="$(type -p Lumina-DE.real)"
+					elif type -p Lumina-DE >/dev/null 2>&1; then
+						lumina="$(type -p Lumina-DE)"
+					fi
+					if [ -n "$lumina" ]; then
+						if grep -e '--version' "$lumina" >/dev/null; then
+							DEver=$("$lumina" --version 2>&1 | tr -d \")
+							DE="${DE} ${DEver}"
+						fi
+					fi
+				elif [[ ${DE} == "MATE" ]]; then
+					if type -p mate-session >/dev/null 2>&1; then
+						DEver=$(mate-session --version)
+						DE="${DE} ${DEver//* }"
+					fi
+				elif [[ ${DE} == "Unity" ]]; then
+					if type -p unity >/dev/null 2>&1; then
+						DEver=$(unity --version)
+						DE="${DE} ${DEver//* }"
+					fi
+				elif [[ ${DE} == "Deepin" ]]; then
+					if [[ -f /etc/deepin-version ]]; then
+						DEver="$(awk -F '=' '/Version/ {print $2}' /etc/deepin-version)"
+						DE="${DE} ${DEver//* }"
+					fi
+				elif [[ ${DE} == "Trinity" ]]; then
+					if type -p tde-config >/dev/null 2>&1; then
+						DEver="$(tde-config --version | awk -F ' ' '/TDE:/ {print $2}')"
+						DE="${DE} ${DEver//* }"
+					fi
+				fi
+			fi
+
+			if [[ "${DE}" == "Not Present" ]]; then
+				if pgrep -U ${UID} lxsession >/dev/null 2>&1; then
+					DE="LXDE"
+					if type -p lxpanel >/dev/null 2>&1; then
+						DEver=$(lxpanel -v)
+						DE="${DE} $DEver"
+					fi
+				elif pgrep -U ${UID} lxqt-session >/dev/null 2>&1; then
+					DE="LXQt"
+				elif pgrep -U ${UID} razor-session >/dev/null 2>&1; then
+					DE="RazorQt"
+				elif pgrep -U ${UID} dtsession >/dev/null 2>&1; then
+					DE="CDE"
+				fi
+			fi
+		fi
+	elif [[ "${distro}" == "Mac OS X" ]]; then
+		if ps -U ${USER} | grep [F]inder >/dev/null 2>&1; then
+			DE="Aqua"
+		fi
+	elif [[ "${distro}" == "Cygwin" || "${distro}" == "Msys" ]]; then
+		# https://msdn.microsoft.com/en-us/library/ms724832%28VS.85%29.aspx
+		if [ "$(wmic os get version | grep -o '^\(6\|10\)')" ]; then
+			DE='Aero'
+		else
+			DE='Luna'
+		fi
+	fi
+	verboseOut "Finding desktop environment...found as '$DE'"
+}
+### DE Detection - End
+
+
+# WM Detection - Begin
+detectwm () {
+	WM="Not Found"
+	if [[ ${distro} != "Mac OS X" && ${distro} != "Cygwin" && "${distro}" != "Msys" ]]; then
+		if [[ -n ${DISPLAY} ]]; then
+			for each in "${wmnames[@]}"; do
+				PID="$(pgrep -U ${UID} "^$each$")"
+				if [ "$PID" ]; then
+					case $each in
+						'2bwm') WM="2bwm";;
+						'9wm') WM="9wm";;
+						'awesome') WM="Awesome";;
+						'beryl') WM="Beryl";;
+						'blackbox') WM="BlackBox";;
+						'bspwm') WM="bspwm";;
+						'budgie-wm') WM="BudgieWM";;
+						'chromeos-wm') WM="chromeos-wm";;
+						'cinnamon') WM="Muffin";;
+						'compiz') WM="Compiz";;
+						'deepin-wm') WM="deepin-wm";;
+						'dminiwm') WM="dminiwm";;
+						'dtwm') WM="dtwm";;
+						'dwm') WM="dwm";;
+						'e16') WM="E16";;
+						'emerald') WM="Emerald";;
+						'enlightenment') WM="E17";;
+						'fluxbox') WM="FluxBox";;
+						'flwm'|'flwm_topside') WM="FLWM";;
+						'fvwm') WM="FVWM";;
+						'herbstluftwm') WM="herbstluftwm";;
+						'howm') WM="howm";;
+						'i3') WM="i3";;
+						'icewm') WM="IceWM";;
+						'kwin') WM="KWin";;
+						'metacity') WM="Metacity";;
+						'monsterwm') WM="monsterwm";;
+						'musca') WM="Musca";;
+						'notion') WM="Notion";;
+						'openbox') WM="OpenBox";;
+						'pekwm') WM="PekWM";;
+						'ratpoison') WM="Ratpoison";;
+						'sawfish') WM="Sawfish";;
+						'scrotwm') WM="ScrotWM";;
+						'spectrwm') WM="SpectrWM";;
+						'stumpwm') WM="StumpWM";;
+						'subtle') WM="subtle";;
+						'sway') WM="sway";;
+						'swm') WM="swm";;
+						'twin') WM="TWin";;
+						'wmaker') WM="WindowMaker";;
+						'wmfs') WM="WMFS";;
+						'wmii') WM="wmii";;
+						'xfwm4') WM="Xfwm4";;
+						'xmonad.*') WM="XMonad";;
+					esac
+				fi
+
+				if [[ ${WM} != "Not Found" ]]; then
+					break 1
+				fi
+			done
+
+			if [[ ${WM} == "Not Found" ]]; then
+				if type -p xprop >/dev/null 2>&1; then
+					WM=$(xprop -root _NET_SUPPORTING_WM_CHECK)
+					if [[ "$WM" =~ 'not found' ]]; then
+						WM="Not Found"
+					elif [[ "$WM" =~ 'Not found' ]]; then
+						WM="Not Found"
+					elif [[ "$WM" =~ '[Ii]nvalid window id format' ]]; then
+						WM="Not Found"
+					elif [[ "$WM" =~ "no such" ]]; then
+						WM="Not Found"
+					else
+						WM=${WM//* }
+						WM=$(xprop -id ${WM} 8s _NET_WM_NAME)
+						WM=$(echo $(WM=${WM//*= }; echo ${WM//\"}))
+					fi
+				fi
+			else
+				if [[ ${BASH_VERSINFO[0]} -ge 4 ]]; then
+					if [[ ${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -gt 1 ]] || [[ ${BASH_VERSINFO[0]} -gt 4 ]]; then
+						WM=${WM,,}
+					else
+						WM="$(tr '[:upper:]' '[:lower:]' <<< ${WM})"
+					fi
+				else
+					WM="$(tr '[:upper:]' '[:lower:]' <<< ${WM})"
+				fi
+				case ${WM} in
+					*'gala'*) WM="Gala";;
+					'2bwm') WM="2bwm";;
+					'awesome') WM="Awesome";;
+					'beryl') WM="Beryl";;
+					'blackbox') WM="BlackBox";;
+					'budgiewm') WM="BudgieWM";;
+					'chromeos-wm') WM="chromeos-wm";;
+					'cinnamon') WM="Cinnamon";;
+					'compiz') WM="Compiz";;
+					'deepin-wm') WM="Deepin WM";;
+					'dminiwm') WM="dminiwm";;
+					'dwm') WM="dwm";;
+					'e16') WM="E16";;
+					'echinus') WM="echinus";;
+					'emerald') WM="Emerald";;
+					'enlightenment') WM="E17";;
+					'fluxbox') WM="FluxBox";;
+					'flwm'|'flwm_topside') WM="FLWM";;
+					'fvwm') WM="FVWM";;
+					'gnome shell'*) WM="Mutter";;
+					'herbstluftwm') WM="herbstluftwm";;
+					'howm') WM="howm";;
+					'i3') WM="i3";;
+					'icewm') WM="IceWM";;
+					'kwin') WM="KWin";;
+					'metacity') WM="Metacity";;
+					'monsterwm') WM="monsterwm";;
+					'muffin') WM="Muffin";;
+					'musca') WM="Musca";;
+					'mutter'*) WM="Mutter";;
+					'notion') WM="Notion";;
+					'openbox') WM="OpenBox";;
+					'pekwm') WM="PekWM";;
+					'ratpoison') WM="Ratpoison";;
+					'sawfish') WM="Sawfish";;
+					'scrotwm') WM="ScrotWM";;
+					'spectrwm') WM="SpectrWM";;
+					'stumpwm') WM="StumpWM";;
+					'subtle') WM="subtle";;
+					'sway') WM="sway";;
+					'swm') WM="swm";;
+					'twin') WM="TWin";;
+					'wmaker') WM="WindowMaker";;
+					'wmfs') WM="WMFS";;
+					'wmii') WM="wmii";;
+					'xfwm4') WM="Xfwm4";;
+					'xmonad') WM="XMonad";;
+				esac
+			fi
+		fi
+	elif [[ ${distro} == "Mac OS X" && "${WM}" == "Not Found" ]]; then
+		if ps -U ${USER} | grep Finder >/dev/null 2>&1; then
+			WM="Quartz Compositor"
+		fi
+	elif [[ "${distro}" == "Cygwin" || "${distro}" == "Msys" ]]; then
+		bugn=$(tasklist | grep -o 'bugn' | tr -d '\r \n')
+		wind=$(tasklist | grep -o 'Windawesome' | tr -d '\r \n')
+		if [ "$bugn" = "bugn" ]; then WM="bug.n"
+		elif [ "$wind" = "Windawesome" ]; then WM="Windawesome"
+		else WM="DWM"; fi
+	fi
+	verboseOut "Finding window manager...found as '$WM'"
+}
+# WM Detection - End
+
+
+# WM Theme Detection - BEGIN
+detectwmtheme () {
+	Win_theme="Not Found"
+	case $WM in
+		'2bwm') Win_theme="Not Applicable";;
+		'9wm') Win_theme="Not Applicable";;
+		'Awesome') if [ -f ${XDG_CONFIG_HOME:-${HOME}/.config}/awesome/rc.lua ]; then Win_theme="$(grep -e '^[^-].*\(theme\|beautiful\).*lua' ${XDG_CONFIG_HOME:-${HOME}/.config}/awesome/rc.lua | grep '[a-zA-Z0-9]\+/[a-zA-Z0-9]\+.lua' -o | cut -d'/' -f1 | head -n1)"; fi;;
+		'BlackBox') if [ -f $HOME/.blackboxrc ]; then Win_theme="$(awk -F"/" '/styleFile/ {print $NF}' $HOME/.blackboxrc)"; fi;;
+		'Beryl') Win_theme="Not Applicable";;
+		'bspwm') Win_theme="Not Applicable";;
+		'BudgieWM')
+			Win_theme="$(gsettings get org.gnome.desktop.wm.preferences theme)"
+			Win_theme="${Win_theme//\'}"
+		;;
+		'Cinnamon'|'Muffin')
+			de_theme="$(gsettings get org.cinnamon.theme name)"
+			de_theme=${de_theme//"'"}
+			win_theme="$(gsettings get org.cinnamon.desktop.wm.preferences theme)"
+			win_theme=${win_theme//"'"}
+			Win_theme="${de_theme} (${win_theme})"
+		;;
+		'Compiz'|'Mutter'*|'GNOME Shell'|'Gala')
+			if type -p gsettings >/dev/null 2>&1; then
+				Win_theme="$(gsettings get org.gnome.shell.extensions.user-theme name 2>/dev/null)"
+				if [[ -z "$Win_theme" ]]; then
+					Win_theme="$(gsettings get org.gnome.desktop.wm.preferences theme)"
+				fi
+				Win_theme=${Win_theme//"'"}
+			elif type -p gconftool-2 >/dev/null 2>&1; then
+				Win_theme=$(gconftool-2 -g /apps/metacity/general/theme)
+			fi
+		;;
+		'Deepin WM')
+			if type -p gsettings >/dev/null 2>&1; then
+				Win_theme="$(gsettings get com.deepin.wrap.gnome.desktop.wm.preferences theme)"
+				Win_theme=${Win_theme//"'"}
+			fi
+		;;
+		'dminiwm') Win_theme="Not Applicable";;
+		'dwm') Win_theme="Not Applicable";;
+		'E16') Win_theme="$(awk -F"= " '/theme.name/ {print $2}' $HOME/.e16/e_config--0.0.cfg)";;
+		'E17'|'Enlightenment')
+			if [ "$(which eet 2>/dev/null)" ]; then
+				econfig="$(eet -d $HOME/.e/e/config/standard/e.cfg config | awk '/value \"file\" string.*.edj/{ print $4 }')"
+				econfigend="${econfig##*/}"
+				Win_theme=${econfigend%.*}
+			fi
+		;;
+		#E17 doesn't store cfg files in text format so for now get the profile as opposed to theme. atyoung
+		#TODO: Find a way to extract and read E17 .cfg files ( google seems to have nothing ). atyoung
+		'E17') Win_theme=${E_CONF_PROFILE};;
+		'echinus') Win_theme="Not Applicable";;
+		'Emerald') if [ -f $HOME/.emerald/theme/theme.ini ]; then Win_theme="$(for a in /usr/share/emerald/themes/* $HOME/.emerald/themes/*; do cmp "$HOME/.emerald/theme/theme.ini" "$a/theme.ini" &>/dev/null && basename "$a"; done)"; fi;;
+		'Finder') Win_theme="Not Applicable";;
+		'FluxBox'|'Fluxbox') if [ -f $HOME/.fluxbox/init ]; then Win_theme="$(awk -F"/" '/styleFile/ {print $NF}' $HOME/.fluxbox/init)"; fi;;
+		'FVWM') Win_theme="Not Applicable";;
+		'howm') Win_theme="Not Applicable";;
+		'i3') Win_theme="Not Applicable";;
+		'IceWM') if [ -f $HOME/.icewm/theme ]; then Win_theme="$(awk -F"[\",/]" '!/#/ {print $2}' $HOME/.icewm/theme)"; fi;;
+		'KWin'*)
+			if [[ -z $KDE_CONFIG_DIR ]]; then
+				if type -p kde5-config >/dev/null 2>&1; then
+					KDE_CONFIG_DIR=$(kde5-config --localprefix)
+				elif type -p kde4-config >/dev/null 2>&1; then
+					KDE_CONFIG_DIR=$(kde4-config --localprefix)
+				elif type -p kde-config >/dev/null 2>&1; then
+					KDE_CONFIG_DIR=$(kde-config --localprefix)
+				fi
+			fi
+
+			if [[ -n $KDE_CONFIG_DIR ]]; then
+				Win_theme="Not Applicable"
+				KDE_CONFIG_DIR=${KDE_CONFIG_DIR%/}
+				if [[ -f $KDE_CONFIG_DIR/share/config/kwinrc ]]; then
+					Win_theme="$(awk '/PluginLib=kwin3_/{gsub(/PluginLib=kwin3_/,"",$0); print $0; exit}' $KDE_CONFIG_DIR/share/config/kwinrc)"
+					if [[ -z "$Win_theme" ]]; then Win_theme="Not Applicable"; fi
+				fi
+				if [[ "$Win_theme" == "Not Applicable" ]]; then
+					if [[ -f $KDE_CONFIG_DIR/share/config/kdebugrc ]]; then
+						Win_theme="$(awk '/(decoration)/ {gsub(/\[/,"",$1); print $1; exit}' $KDE_CONFIG_DIR/share/config/kdebugrc)"
+						if [[ -z "$Win_theme" ]]; then Win_theme="Not Applicable"; fi
+					fi
+				fi
+				if [[ "$Win_theme" == "Not Applicable" ]]; then
+					if [[ -f $KDE_CONFIG_DIR/share/config/kdeglobals ]]; then
+						Win_theme="$(awk '/\[General\]/ {flag=1;next} /^$/{flag=0} flag {print}' $KDE_CONFIG_DIR/share/config/kdeglobals | grep -oP 'Name=\K.*')"
+						if [[ -z "$Win_theme" ]]; then Win_theme="Not Applicable"; fi
+					fi
+				fi
+
+				if [[ "$Win_theme" != "Not Applicable" ]]; then
+					if [[ ${BASH_VERSINFO[0]} -ge 4 ]]; then
+						if [[ ${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -gt 1 ]] || [[ ${BASH_VERSINFO[0]} -gt 4 ]]; then
+							Win_theme="${Win_theme^}"
+						else
+							Win_theme="$(tr '[:lower:]' '[:upper:]' <<< ${Win_theme:0:1})${Win_theme:1}"
+						fi
+					else
+						Win_theme="$(tr '[:lower:]' '[:upper:]' <<< ${Win_theme:0:1})${Win_theme:1}"
+					fi
+				fi
+			fi
+		;;
+		'Marco')
+			Win_theme="$(gsettings get org.mate.Marco.general theme)"
+			Win_theme=${Win_theme//"'"}
+		;;
+		'Metacity') if [ "`gconftool-2 -g /apps/metacity/general/theme`" ]; then Win_theme="$(gconftool-2 -g /apps/metacity/general/theme)"; fi ;;
+		'monsterwm') Win_theme="Not Applicable";;
+		'Musca') Win_theme="Not Applicable";;
+		'Notion') Win_theme="Not Applicable";;
+		'OpenBox'|'Openbox')
+			if [ -f ${XDG_CONFIG_HOME:-${HOME}/.config}/openbox/rc.xml ]; then
+				Win_theme="$(awk -F"[<,>]" '/<theme/ { getline; print $3 }' ${XDG_CONFIG_HOME:-${HOME}/.config}/openbox/rc.xml)";
+			elif [[ -f ${XDG_CONFIG_HOME:-${HOME}/.config}/openbox/lxde-rc.xml && $DE == "LXDE" ]]; then
+				Win_theme="$(awk -F"[<,>]" '/<theme/ { getline; print $3 }' ${XDG_CONFIG_HOME:-${HOME}/.config}/openbox/lxde-rc.xml)";
+			fi
+		;;
+		'PekWM') if [ -f $HOME/.pekwm/config ]; then Win_theme="$(awk -F"/" '/Theme/ {gsub(/\"/,""); print $NF}' $HOME/.pekwm/config)"; fi;;
+		'Ratpoison') Win_theme="Not Applicable";;
+		'Sawfish') Win_theme="$(awk -F")" '/\(quote default-frame-style/{print $2}' $HOME/.sawfish/custom | sed 's/ (quote //')";;
+		'ScrotWM') Win_theme="Not Applicable";;
+		'SpectrWM') Win_theme="Not Applicable";;
+		'swm') Win_theme="Not Applicable";;
+		'subtle') Win_theme="Not Applicable";;
+		'TWin')
+			if [[ -z $TDE_CONFIG_DIR ]]; then
+				if type -p tde-config >/dev/null 2>&1; then
+					TDE_CONFIG_DIR=$(tde-config --localprefix)
+				fi
+			fi
+			if [[ -n $TDE_CONFIG_DIR ]]; then
+				TDE_CONFIG_DIR=${TDE_CONFIG_DIR%/}
+				if [[ -f $TDE_CONFIG_DIR/share/config/kcmthememanagerrc ]]; then
+					Win_theme=$(awk '/CurrentTheme=/ {gsub(/CurrentTheme=/,"",$0); print $0; exit}' $TDE_CONFIG_DIR/share/config/kcmthememanagerrc)
+				fi
+				if [[ -z $Win_theme ]]; then
+					Win_theme="Not Applicable"
+				fi
+			fi
+		;;
+		'WindowMaker') Win_theme="Not Applicable";;
+		'WMFS') Win_theme="Not Applicable";;
+		'wmii') Win_theme="Not Applicable";;
+		'Xfwm4') if [ -f ${XDG_CONFIG_HOME:-${HOME}/.config}/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml ]; then Win_theme="$(xfconf-query -c xfwm4 -p /general/theme)"; fi;;
+		'XMonad') Win_theme="Not Applicable";;
+	esac
+	if [[ "${distro}" == "Mac OS X" ]]; then
+		themeNumber="$(defaults read NSGlobalDomain AppleAquaColorVariant 2>/dev/null)"
+		if [ "${themeNumber}" == "1" ] || [ "${themeNumber}x" == "x" ]; then
+			Win_theme="Blue"
+		else
+			Win_theme="Graphite"
+		fi
+	elif [[ "${distro}" == "Cygwin" || "${distro}" == "Msys" ]]; then
+		if [[ "${distro}" == "Msys" ]]; then
+			themeFile="$(reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes' //v 'CurrentTheme')"
+		else
+			themeFile="$(reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes' /v 'CurrentTheme')"
+		fi
+		Win_theme=$(echo $themeFile| awk -F"\\" '{print $NF}' | sed 's|\.theme$||')
+	fi
+
+	verboseOut "Finding window manager theme...found as '$Win_theme'"
+}
+# WM Theme Detection - END
+
+# GTK Theme\Icon\Font Detection - BEGIN
+detectgtk () {
+	gtk2Theme="Not Found"
+	gtk3Theme="Not Found"
+	gtkIcons="Not Found"
+	gtkFont="Not Found"
+	# Font detection (OS X)
+	if [[ ${distro} == "Mac OS X" ]]; then
+		gtk2Theme="Not Applicable"
+		gtk3Theme="Not Applicable"
+		gtkIcons="Not Applicable"
+		if ps -U ${USER} | grep [F]inder >/dev/null 2>&1; then
+			if [ -f ~/Library/Preferences/com.googlecode.iterm2.plist ]; then
+				# iTerm2
+
+				iterm2_theme_uuid=$(defaults read com.googlecode.iTerm2 "Default Bookmark Guid")
+
+				OLD_IFS=$IFS
+				IFS=$'\n'
+				iterm2_theme_info=($(defaults read com.googlecode.iTerm2 "New Bookmarks" | grep -e Guid -e "Normal Font"))
+				IFS=$OLD_IFS
+
+				for i in $(seq 0 $((${#iterm2_theme_info[*]}/2-1))); do
+					found_uuid=$(str1=${iterm2_theme_info[$i*2]};echo ${str1:16:${#str1}-16-2})
+					if [[ $found_uuid == $iterm2_theme_uuid ]]; then
+						gtkFont=$(str2=${iterm2_theme_info[$i*2+1]};echo ${str2:25:${#str2}-25-2})
+						break
+					fi
+				done
+			else
+				# Terminal.app
+
+				termapp_theme_name=$(defaults read com.apple.Terminal "Default Window Settings")
+
+				OLD_IFS=$IFS
+				IFS=$'\n'
+				termapp_theme_info=($(defaults read com.apple.Terminal "Window Settings" | grep -e "name = " -e "Font = "))
+				IFS=$OLD_IFS
+
+				for i in $(seq 0 $((${#termapp_theme_info[*]}/2-1))); do
+					found_name=$(str1=${termapp_theme_info[$i*2+1]};echo ${str1:15:${#str1}-15-1})
+					if [[ $found_name == $termapp_theme_name ]]; then
+						gtkFont=$(str2=${termapp_theme_info[$i*2]};echo ${str2:288:${#str2}-288})
+						gtkFont=$(echo ${gtkFont%%[dD]2*;} | xxd -r -p)
+						break
+					fi
+				done
+			fi
+		fi
+	else
+		case $DE in
+			'KDE'*) # Desktop Environment found as "KDE"
+				if type - p kde4-config >/dev/null 2>&1; then
+					KDE_CONFIG_DIR=$(kde4-config --localprefix)
+					if [[ -d ${KDE_CONFIG_DIR} ]]; then
+						if [[ -f "${KDE_CONFIG_DIR}/share/config/kdeglobals" ]]; then
+							KDE_CONFIG_FILE="${KDE_CONFIG_DIR}/share/config/kdeglobals"
+						fi
+					fi
+				elif type -p kde5-config >/dev/null 2>&1; then
+					KDE_CONFIG_DIR=$(kde5-config --localprefix)
+					if [[ -d ${KDE_CONFIG_DIR} ]]; then
+						if [[ -f "${KDE_CONFIG_DIR}/share/config/kdeglobals" ]]; then
+							KDE_CONFIG_FILE="${KDE_CONFIG_DIR}/share/config/kdeglobals"
+						fi
+					fi
+				elif type -p kde-config >/dev/null 2>&1; then
+					KDE_CONFIG_DIR=$(kde-config --localprefix)
+					if [[ -d ${KDE_CONFIG_DIR} ]]; then
+						if [[ -f "${KDE_CONFIG_DIR}/share/config/kdeglobals" ]]; then
+							KDE_CONFIG_FILE="${KDE_CONFIG_DIR}/share/config/kdeglobals"
+						fi
+					fi
+				fi
+
+				if [[ -n ${KDE_CONFIG_FILE} ]]; then
+					if grep -q "widgetStyle=" "${KDE_CONFIG_FILE}"; then
+						gtk2Theme=$(awk -F"=" '/widgetStyle=/ {print $2}' "${KDE_CONFIG_FILE}")
+					elif grep -q "colorScheme=" "${KDE_CONFIG_FILE}"; then
+						gtk2Theme=$(awk -F"=" '/colorScheme=/ {print $2}' "${KDE_CONFIG_FILE}")
+					fi
+
+					if grep -q "Theme=" "${KDE_CONFIG_FILE}"; then
+						gtkIcons=$(awk -F"=" '/Theme=/ {print $2}' "${KDE_CONFIG_FILE}")
+					fi
+
+					if grep -q "Font=" "${KDE_CONFIG_FILE}"; then
+						gtkFont=$(awk -F"=" '/font=/ {print $2}' "${KDE_CONFIG_FILE}")
+					fi
+				fi
+
+				if [[ -f $HOME/.gtkrc-2.0 ]]; then
+					gtk2Theme=$(grep '^gtk-theme-name' $HOME/.gtkrc-2.0 | awk -F'=' '{print $2}')
+					gtk2Theme=${gtk2Theme//\"/}
+					gtkIcons=$(grep '^gtk-icon-theme-name' $HOME/.gtkrc-2.0 | awk -F'=' '{print $2}')
+					gtkIcons=${gtkIcons//\"/}
+					gtkFont=$(grep 'font_name' $HOME/.gtkrc-2.0 | awk -F'=' '{print $2}')
+					gtkFont=${gtkFont//\"/}
+				fi
+
+				if [[ -f $HOME/.config/gtk-3.0/settings.ini ]]; then
+					gtk3Theme=$(grep '^gtk-theme-name=' $HOME/.config/gtk-3.0/settings.ini | awk -F'=' '{print $2}')
+				fi
+			;;
+			'Cinnamon'*) # Desktop Environment found as "Cinnamon"
+				if type -p gsettings >/dev/null 2>&1; then
+					gtk3Theme=$(gsettings get org.cinnamon.desktop.interface gtk-theme)
+					gtk3Theme=${gtk3Theme//"'"}
+					gtk2Theme=${gtk3Theme}
+
+					gtkIcons=$(gsettings get org.cinnamon.desktop.interface icon-theme)
+					gtkIcons=${gtkIcons//"'"}
+					gtkFont=$(gsettings get org.cinnamon.desktop.interface font-name)
+					gtkFont=${gtkFont//"'"}
+					if [ "$background_detect" == "1" ]; then gtkBackground=$(gsettings get org.gnome.desktop.background picture-uri); fi
+				fi
+			;;
+			'GNOME'*|'Unity'*|'Budgie') # Desktop Environment found as "GNOME"
+				if type -p gsettings >/dev/null 2>&1; then
+					gtk3Theme=$(gsettings get org.gnome.desktop.interface gtk-theme)
+					gtk3Theme=${gtk3Theme//"'"}
+					gtk2Theme=${gtk3Theme}
+					gtkIcons=$(gsettings get org.gnome.desktop.interface icon-theme)
+					gtkIcons=${gtkIcons//"'"}
+					gtkFont=$(gsettings get org.gnome.desktop.interface font-name)
+					gtkFont=${gtkFont//"'"}
+					if [ "$background_detect" == "1" ]; then gtkBackground=$(gsettings get org.gnome.desktop.background picture-uri); fi
+				elif type -p gconftool-2 >/dev/null 2>&1; then
+					gtk2Theme=$(gconftool-2 -g /desktop/gnome/interface/gtk_theme)
+					gtkIcons=$(gconftool-2 -g /desktop/gnome/interface/icon_theme)
+					gtkFont=$(gconftool-2 -g /desktop/gnome/interface/font_name)
+					if [ "$background_detect" == "1" ]; then
+						gtkBackgroundFull=$(gconftool-2 -g /desktop/gnome/background/picture_filename)
+						gtkBackground=$(echo "$gtkBackgroundFull" | awk -F"/" '{print $NF}')
+					fi
+				fi
+			;;
+			'MATE'*) # MATE desktop environment
+				#if type -p gsettings >/dev/null 2&>1; then
+				gtk3Theme=$(gsettings get org.mate.interface gtk-theme)
+				# gtk3Theme=${gtk3Theme//"'"}
+				gtk2Theme=${gtk3Theme}
+				gtkIcons=$(gsettings get org.mate.interface icon-theme)
+				gtkIcons=${gtkIcons//"'"}
+				gtkFont=$(gsettings get org.mate.interface font-name)
+				gtkFont=${gtkFont//"'"}
+				#fi
+			;;
+			'XFCE'*) # Desktop Environment found as "XFCE"
+				if type -p xfconf-query >/dev/null 2>&1; then
+					gtk2Theme=$(xfconf-query -c xsettings -p /Net/ThemeName)
+				fi
+
+				if type -p xfconf-query >/dev/null 2>&1; then
+					gtkIcons=$(xfconf-query -c xsettings -p /Net/IconThemeName)
+				fi
+
+				if type -p xfconf-query >/dev/null 2>&1; then
+					gtkFont=$(xfconf-query -c xsettings -p /Gtk/FontName)
+				fi
+			;;
+			'LXDE'*)
+				config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
+				if [ -f "$config_home/lxde/config" ]; then
+					lxdeconf="/lxde/config"
+				elif [ "$distro" == "Trisquel" ] || [ "$distro" == "FreeBSD" ]; then
+					lxdeconf=""
+				elif [ -f "$config_home/lxsession/Lubuntu/desktop.conf" ]; then
+					lxdeconf="/lxsession/Lubuntu/desktop.conf"
+				else
+					lxdeconf="/lxsession/LXDE/desktop.conf"
+				fi
+
+				if grep -q "sNet\/ThemeName" "${config_home}${lxdeconf}" 2>/dev/null; then
+					gtk2Theme=$(awk -F'=' '/sNet\/ThemeName/ {print $2}' ${config_home}${lxdeconf})
+				fi
+
+				if grep -q IconThemeName "${config_home}${lxdeconf}" 2>/dev/null; then
+					gtkIcons=$(awk -F'=' '/sNet\/IconThemeName/ {print $2}' ${config_home}${lxdeconf})
+				fi
+
+				if grep -q FontName "${config_home}${lxdeconf}" 2>/dev/null; then
+					gtkFont=$(awk -F'=' '/sGtk\/FontName/ {print $2}' ${config_home}${lxdeconf})
+ 				fi
+			;;
+
+			# /home/me/.config/rox.sourceforge.net/ROX-Session/Settings.xml
+
+			*)	# Lightweight or No DE Found
+				if [ -f "$HOME/.gtkrc-2.0" ]; then
+					if grep -q gtk-theme $HOME/.gtkrc-2.0; then
+						gtk2Theme=$(awk -F'"' '/^gtk-theme/ {print $2}' $HOME/.gtkrc-2.0)
+					fi
+
+					if grep -q icon-theme $HOME/.gtkrc-2.0; then
+						gtkIcons=$(awk -F'"' '/^gtk-icon-theme/ {print $2}' $HOME/.gtkrc-2.0)
+					fi
+
+					if grep -q font $HOME/.gtkrc-2.0; then
+						gtkFont=$(awk -F'"' '/^gtk-font-name/ {print $2}' $HOME/.gtkrc-2.0)
+					fi
+				fi
+				# $HOME/.gtkrc.mine theme detect only
+				if [[ -f "$HOME/.gtkrc.mine" ]]; then
+					minegtkrc="$HOME/.gtkrc.mine"
+				elif [[ -f "$HOME/.gtkrc-2.0.mine" ]]; then
+					minegtkrc="$HOME/.gtkrc-2.0.mine"
+				fi
+				if [ -f "$minegtkrc" ]; then
+					if grep -q "^include" "$minegtkrc"; then
+						gtk2Theme=$(grep '^include.*gtkrc' "$minegtkrc" | awk -F "/" '{ print $5 }')
+					fi
+					if grep -q "^gtk-icon-theme-name" "$minegtkrc"; then
+						gtkIcons=$(grep '^gtk-icon-theme-name' "$minegtkrc" | awk -F '"' '{print $2}')
+					fi
+				fi
+				# /etc/gtk-2.0/gtkrc compatability
+				if [[ -f /etc/gtk-2.0/gtkrc && ! -f "$HOME/.gtkrc-2.0" && ! -f "$HOME/.gtkrc.mine" && ! -f "$HOME/.gtkrc-2.0.mine" ]]; then
+					if grep -q gtk-theme-name /etc/gtk-2.0/gtkrc; then
+						gtk2Theme=$(awk -F'"' '/^gtk-theme-name/ {print $2}' /etc/gtk-2.0/gtkrc)
+					fi
+					if grep -q gtk-fallback-theme-name /etc/gtk-2.0/gtkrc  && ! [ "x$gtk2Theme" = "x" ]; then
+						gtk2Theme=$(awk -F'"' '/^gtk-fallback-theme-name/ {print $2}' /etc/gtk-2.0/gtkrc)
+					fi
+
+					if grep -q icon-theme /etc/gtk-2.0/gtkrc; then
+						gtkIcons=$(awk -F'"' '/^icon-theme/ {print $2}' /etc/gtk-2.0/gtkrc)
+					fi
+					if  grep -q gtk-fallback-icon-theme /etc/gtk-2.0/gtkrc  && ! [ "x$gtkIcons" = "x" ]; then
+						gtkIcons=$(awk -F'"' '/^gtk-fallback-icon-theme/ {print $2}' /etc/gtk-2.0/gtkrc)
+					fi
+
+					if grep -q font /etc/gtk-2.0/gtkrc; then
+						gtkFont=$(awk -F'"' '/^gtk-font-name/ {print $2}' /etc/gtk-2.0/gtkrc)
+					fi
+				fi
+
+				# EXPERIMENTAL gtk3 Theme detection
+				if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
+					if grep -q gtk-theme-name $HOME/.config/gtk-3.0/settings.ini; then
+						gtk3Theme=$(awk -F'=' '/^gtk-theme-name/ {print $2}' $HOME/.config/gtk-3.0/settings.ini)
+					fi
+				fi
+
+				# Proper gtk3 Theme detection
+				#if type -p gsettings >/dev/null 2>&1; then
+				#	gtk3Theme=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null)
+				#	gtk3Theme=${gtk3Theme//"'"}
+				#fi
+
+				# ROX-Filer icon detect only
+				if [ -a "${XDG_CONFIG_HOME:-${HOME}/.config}/rox.sourceforge.net/ROX-Filer/Options" ]; then
+					gtkIcons=$(awk -F'[>,<]' '/icon_theme/ {print $3}' ${XDG_CONFIG_HOME:-${HOME}/.config}/rox.sourceforge.net/ROX-Filer/Options)
+				fi
+
+				# E17 detection
+				if [ $E_ICON_THEME ]; then
+					gtkIcons=${E_ICON_THEME}
+					gtk2Theme="Not available."
+					gtkFont="Not available."
+				fi
+
+				# Background Detection (feh, nitrogen)
+				if [ "$background_detect" == "1" ]; then
+					if [ -a $HOME/.fehbg ]; then
+						gtkBackgroundFull=$(awk -F"'" '/feh --bg/{print $2}' $HOME/.fehbg 2>/dev/null)
+						gtkBackground=$(echo "$gtkBackgroundFull" | awk -F"/" '{print $NF}')
+					elif [ -a ${XDG_CONFIG_HOME:-${HOME}/.config}/nitrogen/bg-saved.cfg ]; then
+						gtkBackground=$(awk -F"/" '/file=/ {print $NF}' ${XDG_CONFIG_HOME:-${HOME}/.config}/nitrogen/bg-saved.cfg)
+					fi
+				fi
+
+				if [[ "$distro" == "Cygwin" || "$distro" == "Msys" ]]; then
+					if [ "$gtkFont" == "Not Found" ]; then
+						if [ -f "$HOME/.minttyrc" ]; then
+							gtkFont="$(grep '^Font=.*' "$HOME/.minttyrc" | grep -o '[0-9A-z ]*$')"
+						fi
+					fi
+				fi
+			;;
+		esac
+	fi
+	verboseOut "Finding GTK2 theme...found as '$gtk2Theme'"
+	verboseOut "Finding GTK3 theme...found as '$gtk3Theme'"
+	verboseOut "Finding icon theme...found as '$gtkIcons'"
+	verboseOut "Finding user font...found as '$gtkFont'"
+	[[ $gtkBackground ]] && verboseOut "Finding background...found as '$gtkBackground'"
+}
+# GTK Theme\Icon\Font Detection - END
+
+# Android-specific detections
+detectdroid () {
+	distro_ver=$(getprop ro.build.version.release)
+
+	hostname=$(getprop net.hostname)
+
+	_device=$(getprop ro.product.device)
+	_model=$(getprop ro.product.model)
+	device="${_model} (${_device})"
+
+	if [[ $(getprop ro.build.host) == "cyanogenmod" ]]; then
+		rom=$(getprop ro.cm.version)
+	else
+		rom=$(getprop ro.build.display.id)
+	fi
+
+	baseband=$(getprop ro.baseband)
+
+	cpu=$(grep '^Processor' /proc/cpuinfo)
+	cpu=$(echo "$cpu" | sed 's/Processor.*: //')
+}
+
+
+#######################
+# End Detection Phase
+#######################
+
+takeShot () {
+	if [[ -z $screenCommand ]]; then
+		shotfiles[1]=${shotfile}
+		if [ "$distro" == "Mac OS X" ]; then
+			displays="$(system_profiler SPDisplaysDataType | grep 'Resolution:' | wc -l | tr -d ' ')"
+			for (( i=2; i<=$displays; i++))
+			do
+				shotfiles[$i]="$(echo ${shotfile} | sed "s/\(.*\)\./\1_${i}./")"
+			done
+			printf "Taking shot in 3.. "; sleep 1; printf "2.. "; sleep 1; printf "1.. "; sleep 1; printf "0.\n"; screencapture -x ${shotfiles[@]} &> /dev/null
+		else
+			if type -p scrot >/dev/null 2>&1; then
+				scrot -cd3 "${shotfile}"
+			else
+				errorOut "Cannot take screenshot! \`scrot' not in \$PATH"
+			fi
+		fi
+		if [ -f "${shotfile}" ]; then
+			verboseOut "Screenshot saved at '${shotfiles[@]}'"
+			if [[ "${upload}" == "1" ]]; then
+				if type -p curl >/dev/null 2>&1; then
+					printf "${bold}==>${c0}  Uploading your screenshot now..."
+					case "${uploadLoc}" in
+						'teknik')
+							baseurl='https://u.teknik.io'
+							uploadurl='https://api.teknik.io/upload/post'
+							ret=$(curl -sf -F file="@${shotfiles[@]}" ${uploadurl})
+							desturl="${ret##*url\":\"}"
+							desturl="${desturl%%\"*}"
+							desturl="${desturl//\\}"
+						;;
+						'mediacrush')
+							baseurl='https://mediacru.sh'
+							uploadurl='https://mediacru.sh/api/upload/file'
+							ret=$(curl -sf -F file="@${shotfiles[@]};type=image/png" ${uploadurl})
+							filehash=$(echo "${ret}" | grep "hash" | cut -d '"' -f4)
+							desturl="${baseurl}/${filehash}"
+						;;
+						'imgur')
+							baseurl='http://imgur.com'
+							uploadurl='http://imgur.com/upload'
+							ret=$(curl -sf -F file="@${shotfiles[@]}" ${uploadurl})
+							filehash="${ret##*hash\":\"}"
+							filehash="${filehash%%\"*}"
+							desturl="${baseurl}/${filehash}"
+						;;
+						'hmp')
+							baseurl='http://i.hmp.me/m'
+							uploadurl='http://hmp.me/ap/?uf=1'
+							ret=$(curl -sf -F a="@${shotfiles[@]};type=image/png" ${uploadurl})
+							desturl="${ret##*img_path\":\"}"
+							desturl="${desturl%%\"*}"
+							desturl="${desturl//\\}"
+						;;
+						'local-example')
+							baseurl="http://www.example.com"
+							serveraddr="www.example.com"
+							scptimeout="20"
+							serverdir="/path/to/directory"
+							scp -qo ConnectTimeout="${scptimeout}" "${shotfiles[@]}" "${serveraddr}:${serverdir}"
+							desturl="${baseurl}/${shotfile}"
+						;;
+					esac
+					printf "your screenshot can be viewed at ${desturl}\n"
+				else
+					errorOut "Cannot upload screenshot! \`curl' not in \$PATH"
+				fi
+			fi
+		else
+			if type -p scrot >/dev/null 2>&1; then
+				errorOut "ERROR: Problem saving screenshot to ${shotfiles[@]}"
+			fi
+		fi
+	else
+		$screenCommand
+	fi
+}
+
+
+
+asciiText () {
+# Distro logos and ASCII outputs
+	if [[ "$asc_distro" ]]; then myascii="${asc_distro}"
+	elif [[ "$art" ]]; then myascii="custom"
+	elif [[ "$fake_distro" ]]; then myascii="${fake_distro}"
+	else myascii="${distro}"; fi
+	case ${myascii} in
+		"custom") source "$art" ;;
+
+		"Alpine Linux")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light blue') # Light
+				c2=$(getColor 'blue') # Dark
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"${c1}        ................          %s"
+"${c1}       ∴::::::::::::::::∴         %s"
+"${c1}      ∴::::::::::::::::::∴        %s"
+"${c1}     ∴::::::::::::::::::::∴       %s"
+"${c1}    ∴:::::::. :::::':::::::∴      %s"
+"${c1}   ∴:::::::.   ;::; ::::::::∴     %s"
+"${c1}  ∴::::::;      ∵     :::::::∴    %s"
+"${c1} ∴:::::.     .         .::::::∴   %s"
+"${c1} ::::::     :::.    .    ::::::   %s"
+"${c1} ∵::::     ::::::.  ::.   ::::∵   %s"
+"${c1}  ∵:..   .:;::::::: :::.  :::∵    %s"
+"${c1}   ∵::::::::::::::::::::::::∵     %s"
+"${c1}    ∵::::::::::::::::::::::∵      %s"
+"${c1}     ∵::::::::::::::::::::∵       %s"
+"${c1}      ::::::::::::::::::::        %s"
+"${c1}       ∵::::::::::::::::∵         %s")
+		;;
+
+		"Arch Linux - Old")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light blue') # Light Blue
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c1              __                     %s"
+"$c1          _=(SDGJT=_                 %s"
+"$c1        _GTDJHGGFCVS)                %s"
+"$c1       ,GTDJGGDTDFBGX0               %s"
+"$c1      JDJDIJHRORVFSBSVL$c2-=+=,_        %s"
+"$c1     IJFDUFHJNXIXCDXDSV,$c2  \"DEBL      %s"
+"$c1    [LKDSDJTDU=OUSCSBFLD.$c2   '?ZWX,   %s"
+"$c1   ,LMDSDSWH'     \`DCBOSI$c2     DRDS], %s"
+"$c1   SDDFDFH'         !YEWD,$c2   )HDROD  %s"
+"$c1  !KMDOCG            &GSU|$c2\_GFHRGO\'  %s"
+"$c1  HKLSGP'$c2           __$c1\TKM0$c2\GHRBV)'  %s"
+"$c1 JSNRVW'$c2       __+MNAEC$c1\IOI,$c2\BN'     %s"
+"$c1 HELK['$c2    __,=OFFXCBGHC$c1\FD)         %s"
+"$c1 ?KGHE $c2\_-#DASDFLSV='$c1    'EF         %s"
+"$c1 'EHTI                    !H         %s"
+"$c1  \`0F'                    '!         %s"
+"                                     %s"
+"                                     %s")
+		;;
+
+		"Arch Linux")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light cyan') # Light
+				c2=$(getColor 'cyan') # Dark
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="1"
+			fulloutput=(
+"${c1}                   -\`"
+"${c1}                  .o+\`                %s"
+"${c1}                 \`ooo/                %s"
+"${c1}                \`+oooo:               %s"
+"${c1}               \`+oooooo:              %s"
+"${c1}               -+oooooo+:             %s"
+"${c1}             \`/:-:++oooo+:            %s"
+"${c1}            \`/++++/+++++++:           %s"
+"${c1}           \`/++++++++++++++:          %s"
+"${c1}          \`/+++o"${c2}"oooooooo"${c1}"oooo/\`        %s"
+"${c2}         "${c1}"./"${c2}"ooosssso++osssssso"${c1}"+\`       %s"
+"${c2}        .oossssso-\`\`\`\`/ossssss+\`      %s"
+"${c2}       -osssssso.      :ssssssso.     %s"
+"${c2}      :osssssss/        osssso+++.    %s"
+"${c2}     /ossssssss/        +ssssooo/-    %s"
+"${c2}   \`/ossssso+/:-        -:/+osssso+-  %s"
+"${c2}  \`+sso+:-\`                 \`.-/+oso: %s"
+"${c2} \`++:.                           \`-/+/%s"
+"${c2} .\`                                 \`/%s")
+		;;
+
+		"Mint")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light green') # Bold Green
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"                                      %s"
+"$c2 MMMMMMMMMMMMMMMMMMMMMMMMMmds+.       %s"
+"$c2 MMm----::-://////////////oymNMd+\`    %s"
+"$c2 MMd      "$c1"/++                "$c2"-sNMd:   %s"
+"$c2 MMNso/\`  "$c1"dMM    \`.::-. .-::.\` "$c2".hMN:  %s"
+"$c2 ddddMMh  "$c1"dMM   :hNMNMNhNMNMNh: "$c2"\`NMm  %s"
+"$c2     NMm  "$c1"dMM  .NMN/-+MMM+-/NMN\` "$c2"dMM  %s"
+"$c2     NMm  "$c1"dMM  -MMm  \`MMM   dMM. "$c2"dMM  %s"
+"$c2     NMm  "$c1"dMM  -MMm  \`MMM   dMM. "$c2"dMM  %s"
+"$c2     NMm  "$c1"dMM  .mmd  \`mmm   yMM. "$c2"dMM  %s"
+"$c2     NMm  "$c1"dMM\`  ..\`   ...   ydm. "$c2"dMM  %s"
+"$c2     hMM- "$c1"+MMd/-------...-:sdds  "$c2"dMM  %s"
+"$c2     -NMm- "$c1":hNMNNNmdddddddddy/\`  "$c2"dMM  %s"
+"$c2      -dMNs-"$c1"\`\`-::::-------.\`\`    "$c2"dMM  %s"
+"$c2       \`/dMNmy+/:-------------:/yMMM  %s"
+"$c2          ./ydNMMMMMMMMMMMMMMMMMMMMM  %s"
+"$c2             \.MMMMMMMMMMMMMMMMMMM    %s"
+"                                      %s")
+		;;
+
+		"LMDE")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light green') # Bold Green
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"${c1}          \`.-::---..           %s"
+"${c2}       .:++++ooooosssoo:.      %s"
+"${c2}     .+o++::.      \`.:oos+.    %s"
+"${c2}    :oo:.\`             -+oo"${c1}":   %s"
+"${c2}  "${c1}"\`"${c2}"+o/\`    ."${c1}"::::::"${c2}"-.    .++-"${c1}"\`  %s"
+"${c2} "${c1}"\`"${c2}"/s/    .yyyyyyyyyyo:   +o-"${c1}"\`  %s"
+"${c2} "${c1}"\`"${c2}"so     .ss       ohyo\` :s-"${c1}":  %s"
+"${c2} "${c1}"\`"${c2}"s/     .ss  h  m  myy/ /s\`"${c1}"\`  %s"
+"${c2} \`s:     \`oo  s  m  Myy+-o:\`   %s"
+"${c2} \`oo      :+sdoohyoydyso/.     %s"
+"${c2}  :o.      .:////////++:       %s"
+"${c2}  \`/++        "${c1}"-:::::-          %s"
+"${c2}   "${c1}"\`"${c2}"++-                        %s"
+"${c2}    "${c1}"\`"${c2}"/+-                       %s"
+"${c2}      "${c1}"."${c2}"+/.                     %s"
+"${c2}        "${c1}"."${c2}":+-.                  %s"
+"${c2}           \`--.\`\`              %s"
+"                               %s")
+		;;
+
+		"Ubuntu")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light red') # Light Red
+				c3=$(getColor 'yellow') # Bold Yellow
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; c3="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c2                          ./+o+-      %s"
+"$c1                  yyyyy- $c2-yyyyyy+     %s"
+"$c1               $c1://+//////$c2-yyyyyyo     %s"
+"$c3           .++ $c1.:/++++++/-$c2.+sss/\`     %s"
+"$c3         .:++o:  $c1/++++++++/:--:/-     %s"
+"$c3        o:+o+:++.$c1\`..\`\`\`.-/oo+++++/    %s"
+"$c3       .:+o:+o/.$c1          \`+sssoo+/   %s"
+"$c1  .++/+:$c3+oo+o:\`$c1             /sssooo.  %s"
+"$c1 /+++//+:$c3\`oo+o$c1               /::--:.  %s"
+"$c1 \+/+o+++$c3\`o++o$c2               ++////.  %s"
+"$c1  .++.o+$c3++oo+:\`$c2             /dddhhh.  %s"
+"$c3       .+.o+oo:.$c2          \`oddhhhh+   %s"
+"$c3        \+.++o+o\`$c2\`-\`\`\`\`.:ohdhhhhh+    %s"
+"$c3         \`:o+++ $c2\`ohhhhhhhhyo++os:     %s"
+"$c3           .o:$c2\`.syhhhhhhh/$c3.oo++o\`     %s"
+"$c2               /osyyyyyyo$c3++ooo+++/    %s"
+"$c2                   \`\`\`\`\` $c3+oo+++o\:    %s"
+"$c3                          \`oo++.      %s")
+		;;
+
+		"KDE neon")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light green') # Bold Green
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c1              \`..---+/---..\`               %s"
+"$c1          \`---.\`\`   \`\`   \`.---.\`           %s"
+"$c1       .--.\`        \`\`        \`-:-.        %s"
+"$c1     \`:/:     \`.----//----.\`     :/-       %s"
+"$c1    .:.    \`---\`          \`--.\`    .:\`     %s"
+"$c1   .:\`   \`--\`                .:-    \`:.    %s"
+"$c1  \`/    \`:.      \`.-::-.\`      -:\`   \`/\`   %s"
+"$c1  /.    /.     \`:++++++++:\`     .:    .:   %s"
+"$c1 \`/    .:     \`+++++++++++/      /\`   \`+\`  %s"
+"$c1 /+\`   --     .++++++++++++\`     :.   .+:  %s"
+"$c1 \`/    .:     \`+++++++++++/      /\`   \`+\`  %s"
+"$c1  /\`    /.     \`:++++++++:\`     .:    .:   %s"
+"$c1  ./    \`:.      \`.:::-.\`      -:\`   \`/\`   %s"
+"$c1   .:\`   \`--\`                .:-    \`:.    %s"
+"$c1    .:.    \`---\`          \`--.\`    .:\`     %s"
+"$c1     \`:/:     \`.----//----.\`     :/-       %s"
+"$c1       .-:.\`        \`\`        \`-:-.        %s"
+"$c1          \`---.\`\`   \`\`   \`.---.\`           %s"
+"$c1              \`..---+/---..\`               %s")
+		;;
+
+		"Debian")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light red') # Light Red
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"  $c1       _,met\$\$\$\$\$gg.          %s"
+"  $c1    ,g\$\$\$\$\$\$\$\$\$\$\$\$\$\$\$P.       %s"
+"  $c1  ,g\$\$P\"\"       \"\"\"Y\$\$.\".     %s"
+"  $c1 ,\$\$P'              \`\$\$\$.     %s"
+"  $c1',\$\$P       ,ggs.     \`\$\$b:   %s"
+"  $c1\`d\$\$'     ,\$P\"\'   $c2.$c1    \$\$\$    %s"
+"  $c1 \$\$P      d\$\'     $c2,$c1    \$\$P    %s"
+"  $c1 \$\$:      \$\$.   $c2-$c1    ,d\$\$'    %s"
+"  $c1 \$\$\;      Y\$b._   _,d\$P'     %s"
+"  $c1 Y\$\$.    $c2\`.$c1\`\"Y\$\$\$\$P\"'         %s"
+"  $c1 \`\$\$b      $c2\"-.__              %s"
+"  $c1  \`Y\$\$                        %s"
+"  $c1   \`Y\$\$.                      %s"
+"  $c1     \`\$\$b.                    %s"
+"  $c1       \`Y\$\$b.                 %s"
+"  $c1          \`\"Y\$b._             %s"
+"  $c1              \`\"\"\"\"           %s"
+"                                %s"
+" $c2 Script by VpnSakti"
+" $c2 https://t.me/dimasario20"
+" $c2 Ketik menu Untuk Menampilkan Pilihan"
+" $c2 ")
+			;;
+
+		"Devuan")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light purple') # Light purple
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c1                                    %s"
+"$c1     ..,,;;;::;,..                  %s"
+"$c1             \`':ddd;:,.             %s"
+"$c1                   \`'dPPd:,.        %s"
+"$c1                       \`:b\$\$b\`.     %s"
+"$c1                          'P\$\$\$d\`   %s"
+"$c1                           .\$\$\$\$\$\`  %s"
+"$c1                           ;\$\$\$\$\$P  %s"
+"$c1                        .:P\$\$\$\$\$\$\`  %s"
+"$c1                    .,:b\$\$\$\$\$\$\$;'   %s"
+"$c1               .,:dP\$\$\$\$\$\$\$\$b:'     %s"
+"$c1        .,:;db\$\$\$\$\$\$\$\$\$\$Pd'\`        %s"
+"$c1   ,db\$\$\$\$\$\$\$\$\$\$\$\$\$\$b:'\`            %s"
+"$c1  :\$\$\$\$\$\$\$\$\$\$\$\$b:'\`                 %s"
+"$c1   \`\$\$\$\$\$bd:''\`                     %s"
+"$c1     \`'''\`                          %s"
+"                                    %s")
+		;;
+
+		"Raspbian")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light green') # Light Green
+				c2=$(getColor 'light red') # Light Red
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+" $c1   .',;:cc;,'.    .,;::c:,,.   %s"
+"   $c1,ooolcloooo:  'oooooccloo:   %s"
+"   $c1.looooc;;:ol  :oc;;:ooooo'   %s"
+"     $c1;oooooo:      ,ooooooc.    %s"
+"       $c1.,:;'.       .;:;'.      %s"
+"       $c2.... ..'''''. ....       %s"
+"     $c2.''.   ..'''''.  ..''.     %s"
+"     $c2..  .....    .....  ..     %s"
+"    $c2.  .'''''''  .''''''.  .    %s"
+"  $c2.'' .''''''''  .'''''''. ''.  %s"
+"  $c2'''  '''''''    .''''''  '''  %s"
+"  $c2.'    ........... ...    .'.  %s"
+"    $c2....    ''''''''.   .''.    %s"
+"    $c2'''''.  ''''''''. .'''''    %s"
+"     $c2'''''.  .'''''. .'''''.    %s"
+"      $c2..''.     .    .''..      %s"
+"            $c2.'''''''            %s"
+"             $c2......       %s")
+		;;
+
+		"CrunchBang")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"                                      %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2  "$c1"████████████████████████████"$c2"   "$c1"███"$c2"  %s"
+"$c2  "$c1"████████████████████████████"$c2"   "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2  "$c1"████████████████████████████"$c2"   "$c1"███"$c2"  %s"
+"$c2  "$c1"████████████████████████████"$c2"   "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"               %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"               %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2         "$c1"███"$c2"        "$c1"███"$c2"          "$c1"███"$c2"  %s"
+"$c2                                      %s")
+		;;
+
+		"CRUX")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light cyan')
+				c2=$(getColor 'yellow')
+				c3=$(getColor 'white')
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; fi
+			startline="1"
+			fulloutput=(""
+"${c1}          odddd            %s"
+"${c1}       oddxkkkxxdoo        %s"
+"${c1}      ddcoddxxxdoool       %s"
+"${c1}      xdclodod  olol       %s"
+"${c1}      xoc  xdd  olol       %s"
+"${c1}      xdc  ${c2}k00${c1}Okdlol       %s"
+"${c1}      xxd${c2}kOKKKOkd${c1}ldd       %s"
+"${c1}      xdco${c2}xOkdlo${c1}dldd       %s"
+"${c1}      ddc:cl${c2}lll${c1}oooodo      %s"
+"${c1}    odxxdd${c3}xkO000kx${c1}ooxdo    %s"
+"${c1}   oxdd${c3}x0NMMMMMMWW0od${c1}kkxo  %s"
+"${c1}  oooxd${c3}0WMMMMMMMMMW0o${c1}dxkx  %s"
+"${c1} docldkXW${c3}MMMMMMMWWN${c1}Odolco  %s"
+"${c1} xx${c2}dx${c1}kxxOKN${c3}WMMWN${c1}0xdoxo::c  %s"
+"${c2} xOkkO${c1}0oo${c3}odOW${c2}WW${c1}XkdodOxc:l  %s"
+"${c2} dkkkxkkk${c3}OKX${c2}NNNX0Oxx${c1}xc:cd  %s"
+"${c2}  odxxdx${c3}xllod${c2}ddooxx${c1}dc:ldo  %s"
+"${c2}    lodd${c1}dolccc${c2}ccox${c1}xoloo"
+"")
+		;;
+
+		"Chrome OS")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'green') # Green
+				c2=$(getColor 'light red') # Light Red
+				c3=$(getColor 'yellow') # Bold Yellow
+				c4=$(getColor 'light blue') # Light Blue
+				c5=$(getColor 'white') # White
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; c3="${my_lcolor}"; c4="${my_lcolor}"; c5="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c2             .,:loool:,.              %s"
+"$c2         .,coooooooooooooc,.          %s"
+"$c2      .,lllllllllllllllllllll,.       %s"
+"$c2     ;ccccccccccccccccccccccccc;      %s"
+"$c1   '${c2}ccccccccccccccccccccccccccccc.    %s"
+"$c1  ,oo${c2}c::::::::okO${c5}000${c3}0OOkkkkkkkkkkk:   %s"
+"$c1 .ooool${c2};;;;:x${c5}K0${c4}kxxxxxk${c5}0X${c3}K0000000000.  %s"
+"$c1 :oooool${c2};,;O${c5}K${c4}ddddddddddd${c5}KX${c3}000000000d  %s"
+"$c1 lllllool${c2};l${c5}N${c4}dllllllllllld${c5}N${c3}K000000000  %s"
+"$c1 lllllllll${c2}o${c5}M${c4}dccccccccccco${c5}W${c3}K000000000  %s"
+"$c1 ;cllllllllX${c5}X${c4}c:::::::::c${c5}0X${c3}000000000d  %s"
+"$c1 .ccccllllllO${c5}Nk${c4}c;,,,;cx${c5}KK${c3}0000000000.  %s"
+"$c1  .cccccclllllxOO${c5}OOO${c1}Okx${c3}O0000000000;   %s"
+"$c1   .:ccccccccllllllllo${c3}O0000000OOO,    %s"
+"$c1     ,:ccccccccclllcd${c3}0000OOOOOOl.     %s"
+"$c1       '::ccccccccc${c3}dOOOOOOOkx:.       %s"
+"$c1         ..,::cccc${c3}xOOOkkko;.          %s"
+"$c1             ..,:${c3}dOkxl:.              %s")
+		;;
+
+		"Gentoo")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light purple') # Light Purple
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c2         -/oyddmdhs+:.               %s"
+"$c2     -o"$c1"dNMMMMMMMMNNmhy+"$c2"-\`            %s"
+"$c2   -y"$c1"NMMMMMMMMMMMNNNmmdhy"$c2"+-          %s"
+"$c2 \`o"$c1"mMMMMMMMMMMMMNmdmmmmddhhy"$c2"/\`       %s"
+"$c2 om"$c1"MMMMMMMMMMMN"$c2"hhyyyo"$c1"hmdddhhhd"$c2"o\`     %s"
+"$c2.y"$c1"dMMMMMMMMMMd"$c2"hs++so/s"$c1"mdddhhhhdm"$c2"+\`   %s"
+"$c2 oy"$c1"hdmNMMMMMMMN"$c2"dyooy"$c1"dmddddhhhhyhN"$c2"d.  %s"
+"$c2  :o"$c1"yhhdNNMMMMMMMNNNmmdddhhhhhyym"$c2"Mh  %s"
+"$c2    .:"$c1"+sydNMMMMMNNNmmmdddhhhhhhmM"$c2"my  %s"
+"$c2       /m"$c1"MMMMMMNNNmmmdddhhhhhmMNh"$c2"s:  %s"
+"$c2    \`o"$c1"NMMMMMMMNNNmmmddddhhdmMNhs"$c2"+\`   %s"
+"$c2  \`s"$c1"NMMMMMMMMNNNmmmdddddmNMmhs"$c2"/.     %s"
+"$c2 /N"$c1"MMMMMMMMNNNNmmmdddmNMNdso"$c2":\`       %s"
+"$c2+M"$c1"MMMMMMNNNNNmmmmdmNMNdso"$c2"/-          %s"
+"$c2yM"$c1"MNNNNNNNmmmmmNNMmhs+/"$c2"-\`              %s"
+"$c2/h"$c1"MMNNNNNNNNMNdhs++/"$c2"-\`               %s"
+"$c2\`/"$c1"ohdmmddhys+++/:"$c2".\`                  %s"
+"$c2  \`-//////:--.                       %s")
+		;;
+
+		"Funtoo")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light purple') # Light Purple
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"                                                    %s"
+"                                                    %s"
+"                                                    %s"
+"                                                    %s"
+"${c1}     _______               ____                     %s"
+"${c1}    /MMMMMMM/             /MMMM| _____  _____       %s"
+"${c1} __/M${c2}.MMM.${c1}M/_____________|M${c2}.M${c1}MM|/MMMMM\/MMMMM\      %s"
+"${c1}|MMMM${c2}MM'${c1}MMMMMMMMMMMMMMMMMMM${c2}MM${c1}MMMM${c2}.MMMM..MMMM.${c1}MM\    %s"
+"${c1}|MM${c2}MMMMMMM${c1}/m${c2}MMMMMMMMMMMMMMMMMMMMMM${c1}MMMM${c2}MM${c1}MMMM${c2}MM${c1}MM|   %s"
+"${c1}|MMMM${c2}MM${c1}MMM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MM${c1}MMMMM${c2}\MMM${c1}MMM${c2}MM${c1}MMMM${c2}MM${c1}MMMM${c2}MM${c1}MM|   %s"
+"${c1}  |MM${c2}MM${c1}MMM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MMM${c1}MMMM${c2}'MMMM''MMMM'${c1}MM/    %s"
+"${c1}  |MM${c2}MM${c1}MMM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MMM${c1}MMM\MMMMM/\MMMMM/      %s"
+"${c1}  |MM${c2}MM${c1}MMM${c2}MM${c1}MMMMMM${c2}MM${c1}MM${c2}MM${c1}MM${c2}MMMMM'${c1}M|                  %s"
+"${c1}  |MM${c2}MM${c1}MMM${c2}MMMMMMMMMMMMMMMMM MM'${c1}M/                   %s"
+"${c1}  |MMMMMMMMMMMMMMMMMMMMMMMMMMMM/                    %s"
+"                                                    %s"
+"                                                    %s"
+"                                                    %s")
+		;;
+
+		"Kogaion")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light blue') # Light Blue
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"${c1}                  ;;      ,;             %s"
+"${c1}                 ;;;     ,;;             %s"
+"${c1}               ,;;;;     ;;;;            %s"
+"${c1}            ,;;;;;;;;    ;;;;            %s"
+"${c1}           ;;;;;;;;;;;   ;;;;;           %s"
+"${c1}          ,;;;;;;;;;;;;  ';;;;;,         %s"
+"${c1}          ;;;;;;;;;;;;;;, ';;;;;;;       %s"
+"${c1}          ;;;;;;;;;;;;;;;;;, ';;;;;      %s"
+"${c1}      ;    ';;;;;;;;;;;;;;;;;;, ;;;      %s"
+"${c1}      ;;;,  ';;;;;;;;;;;;;;;;;;;,;;      %s"
+"${c1}      ;;;;;,  ';;;;;;;;;;;;;;;;;;,       %s"
+"${c1}      ;;;;;;;;,  ';;;;;;;;;;;;;;;;,      %s"
+"${c1}      ;;;;;;;;;;;;, ';;;;;;;;;;;;;;      %s"
+"${c1}      ';;;;;;;;;;;;; ';;;;;;;;;;;;;      %s"
+"${c1}       ';;;;;;;;;;;;;, ';;;;;;;;;;;      %s"
+"${c1}        ';;;;;;;;;;;;;  ;;;;;;;;;;       %s"
+"${c1}          ';;;;;;;;;;;; ;;;;;;;;         %s"
+"${c1}              ';;;;;;;; ;;;;;;           %s"
+"${c1}                 ';;;;; ;;;;             %s"
+"${c1}                   ';;; ;;               ")
+		;;
+
+		"Fedora")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light blue') # Light Blue
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c2           /:-------------:\         %s"
+"$c2        :-------------------::       %s"
+"$c2      :-----------"$c1"/shhOHbmp"$c2"---:\\     %s"
+"$c2    /-----------"$c1"omMMMNNNMMD  "$c2"---:    %s"
+"$c2   :-----------"$c1"sMMMMNMNMP"$c2".    ---:   %s"
+"$c2  :-----------"$c1":MMMdP"$c2"-------    ---\  %s"
+"$c2 ,------------"$c1":MMMd"$c2"--------    ---:  %s"
+"$c2 :------------"$c1":MMMd"$c2"-------    .---:  %s"
+"$c2 :----    "$c1"oNMMMMMMMMMNho"$c2"     .----:  %s"
+"$c2 :--     ."$c1"+shhhMMMmhhy++"$c2"   .------/  %s"
+"$c2 :-    -------"$c1":MMMd"$c2"--------------:   %s"
+"$c2 :-   --------"$c1"/MMMd"$c2"-------------;    %s"
+"$c2 :-    ------"$c1"/hMMMy"$c2"------------:     %s"
+"$c2 :--"$c1" :dMNdhhdNMMNo"$c2"------------;      %s"
+"$c2 :---"$c1":sdNMMMMNds:"$c2"------------:       %s"
+"$c2 :------"$c1":://:"$c2"-------------::         %s"
+"$c2 :---------------------://           %s"
+"                                     %s")
+		;;
+
+		"Chapeau")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # White
+				c2=$(getColor 'light green') # Light Green
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c2               .-/-.               %s"
+"$c2             ////////.             %s"
+"$c2           ////////"$c1"y+"$c2"//.           %s"
+"$c2         ////////"$c1"mMN"$c2"/////.         %s"
+"$c2       ////////"$c1"mMN+"$c2"////////.       %s"
+"$c2     ////////////////////////.     %s"
+"$c2   /////////+"$c1"shhddhyo"$c2"+////////.    %s"
+"$c2  ////////"$c1"ymMNmdhhdmNNdo"$c2"///////.   %s"
+"$c2 ///////+"$c1"mMms"$c2"////////"$c1"hNMh"$c2"///////.  %s"
+"$c2 ///////"$c1"NMm+"$c2"//////////"$c1"sMMh"$c2"///////  %s"
+"$c2 //////"$c1"oMMNmmmmmmmmmmmmMMm"$c2"///////  %s"
+"$c2 //////"$c1"+MMmssssssssssssss+"$c2"///////  %s"
+"$c2 \`//////"$c1"yMMy"$c2"////////////////////   %s"
+"$c2  \`//////"$c1"smMNhso++oydNm"$c2"////////    %s"
+"$c2   \`///////"$c1"ohmNMMMNNdy+"$c2"///////     %s"
+"$c2     \`//////////"$c1"++"$c2"//////////       %s"
+"$c2        \`////////////////.         %s"
+"$c2            -////////-            %s"
+"                                  %s")
+		;;
+
+		"Korora")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white')
+				c2=$(getColor 'light blue')
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c1                 ____________   %s"
+"$c1              _add55555555554"$c2":  %s"
+"$c1            _w?'"$c2"\`\`\`\`\`\`\`\`\`\`'"$c1")k"$c2":  %s"
+"$c1           _Z'"$c2"\`"$c1"            ]k"$c2":  %s"
+"$c1           m("$c2"\`"$c1"             )k"$c2":  %s"
+"$c1      _.ss"$c2"\`"$c1"m["$c2"\`"$c1",            ]e"$c2":  %s"
+"$c1    .uY\"^\`"$c2"\`"$c1"Xc"$c2"\`"$c1"?Ss.         d("$c2"\`  %s"
+"$c1   jF'"$c2"\`"$c1"    \`@.  "$c2"\`"$c1"Sc      .jr"$c2"\`   %s"
+"$c1  jr"$c2"\`"$c1"       \`?n_ "$c2"\`"$c1"$;   _a2\""$c2"\`    %s"
+"$c1 .m"$c2":"$c1"          \`~M"$c2"\`"$c1"1k"$c2"\`"$c1"5?!\`"$c2"\`      %s"
+"$c1 :#"$c2":"$c1"             "$c2"\`"$c1")e"$c2"\`\`\`         %s"
+"$c1 :m"$c2":"$c1"             ,#'"$c2"\`           %s"
+"$c1 :#"$c2":"$c1"           .s2'"$c2"\`            %s"
+"$c1 :m,________.aa7^"$c2"\`              %s"
+"$c1 :#baaaaaaas!J'"$c2"\`                %s"
+"$c2  \`\`\`\`\`\`\`\`\`\`\`                   %s")
+		;;
+
+		"gNewSense")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light blue') # Light Blue
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c1                      ..,,,,..                      %s"
+"$c1                .oocchhhhhhhhhhccoo.                %s"
+"$c1         .ochhlllllllc hhhhhh ollllllhhco.          %s"
+"$c1     ochlllllllllll hhhllllllhhh lllllllllllhco     %s"
+"$c1  .cllllllllllllll hlllllo  +hllh llllllllllllllc.  %s"
+"$c1 ollllllllllhco\'\'  hlllllo  +hllh  \`\`ochllllllllllo %s"
+"$c1 hllllllllc\'       hllllllllllllh       \`cllllllllh %s"
+"$c1 ollllllh          +llllllllllll+          hllllllo %s"
+"$c1  \`cllllh.           ohllllllho           .hllllc\'  %s"
+"$c1     ochllc.            ++++            .cllhco     %s"
+"$c1        \`+occooo+.                .+ooocco+\'        %s"
+"$c1               \`+oo++++      ++++oo+\'               %s"
+"$c1                                                    %s")
+		;;
+
+		"BLAG")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light purple')
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c1              d                     %s"
+"$c1             ,MK:                   %s"
+"$c1             xMMMX:                 %s"
+"$c1            .NMMMMMX;               %s"
+"$c1            lMMMMMMMM0clodkO0KXWW:  %s"
+"$c1            KMMMMMMMMMMMMMMMMMMX'   %s"
+"$c1       .;d0NMMMMMMMMMMMMMMMMMMK.    %s"
+"$c1  .;dONMMMMMMMMMMMMMMMMMMMMMMx      %s"
+"$c1 'dKMMMMMMMMMMMMMMMMMMMMMMMMl       %s"
+"$c1    .:xKWMMMMMMMMMMMMMMMMMMM0.      %s"
+"$c1        .:xNMMMMMMMMMMMMMMMMMK.     %s"
+"$c1           lMMMMMMMMMMMMMMMMMMK.    %s"
+"$c1           ,MMMMMMMMWkOXWMMMMMM0    %s"
+"$c1           .NMMMMMNd.     \`':ldko   %s"
+"$c1            OMMMK:                  %s"
+"$c1            oWk,                    %s"
+"$c1            ;:                      %s")
+		;;
+
+		"FreeBSD")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # white
+				c2=$(getColor 'light red') # Light Red
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"                                     %s"
+"   "$c1"\`\`\`                        "$c2"\`      %s"
+"  "$c1"\` \`.....---..."$c2"....--.\`\`\`   -/      %s"
+"  "$c1"+o   .--\`         "$c2"/y:\`      +.     %s"
+"  "$c1" yo\`:.            "$c2":o      \`+-      %s"
+"    "$c1"y/               "$c2"-/\`   -o/       %s"
+"   "$c1".-                  "$c2"::/sy+:.      %s"
+"   "$c1"/                     "$c2"\`--  /      %s"
+"  "$c1"\`:                          "$c2":\`     %s"
+"  "$c1"\`:                          "$c2":\`     %s"
+"   "$c1"/                          "$c2"/      %s"
+"   "$c1".-                        "$c2"-.      %s"
+"    "$c1"--                      "$c2"-.       %s"
+"     "$c1"\`:\`                  "$c2"\`:\`        %s"
+"       "$c2".--             \`--.          %s"
+"         "$c2" .---.....----.             %s"
+"                                     %s"
+"                                     %s")
+		;;
+
+		"FreeBSD - Old")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'white') # white
+				c2=$(getColor 'light red') # Light Red
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="${my_lcolor}"; c2="${my_lcolor}"; fi
+			startline="0"
+			fulloutput=(
+"$c2              ,        ,          %s"
+"$c2             /(        )\`         %s"
+"$c2             \ \___   / |         %s"
+"$c2             /- "$c1"_$c2  \`-/  '         %s"
+"$c2            ($c1/\/ \ $c2\   /\\         %s"
+"$c1            / /   |$c2 \`    \\        %s"
+"$c1            O O   )$c2 /    |        %s"
+"$c1            \`-^--'\`$c2<     '        %s"
+"$c2           (_.)  _  )   /         %s"
+"$c2            \`.___/\`    /          %s"
+"$c2              \`-----' /           %s"
+"$c1 <----.     "$c2"__/ __   \\            %s"
+"$c1 <----|===="$c2"O}}}$c1==$c2} \} \/$c1====      %s"
+"$c1 <----'    $c2\`--' \`.__,' \\          %s"
+"$c2              |        |          %s"
+"$c2               \       /       /\\ %s"
+"$c2          ______( (_  / \______/  %s"
+"$c2        ,'  ,-----'   |           %s"
+"$c2        \`--{__________)"
+"")
+		;;
+
+		"OpenBSD")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'yellow') # Light Yellow
+				c2=$(getColor 'brown') # Bold Yellow
+				c3=$(getColor 'light cyan') # Light Cyan
+				c4=$(getColor 'light red') # Light Red
+				c5=$(getColor 'dark grey')
+			fi
+			if [ -n "${my_lcolor}" ]; then c1="$my_lcolor"; c2="${my_color}"; fi
+			startline="3"
+			fulloutput=(
+"                                       "$c3" _      "
+"                                       "$c3"(_)      "
+""$c1"              |    .                            "
+""$c1"          .   |L  /|   .         "$c3" _     %s"
+""$c1"      _ . |\ _| \--+._/| .       "$c3"(_)    %s"
+""$c1"     / ||\| Y J  )   / |/| ./           %s"
+""$c1"    J  |)'( |        \` F\`.'/       "$c3" _   %s"
+""$c1"  -<|  F         __     .-<        "$c3"(_)  %s"
+""$c1"    | /       .-'"$c3". "$c1"\`.  /"$c3"-. "$c1"L___         %s"
+""$c1"    J \      <    "$c3"\ "$c1" | | "$c5"O"$c3"\\\\"$c1"|.-' "$c3" _      %s"
+""$c1"  _J \  .-    \\\\"$c3"/ "$c5"O "$c3"| "$c1"| \  |"$c1"F    "$c3"(_)     %s"
+""$c1" '-F  -<_.     \   .-'  \`-' L__         %s"
+""$c1"__J  _   _.     >-'  "$c2")"$c4"._.   "$c1"|-'         %s         "
+""$c1" \`-|.'   /_.          "$c4"\_|  "$c1" F           %s     "
+""$c1"  /.-   .                _.<            %s"
+""$c1" /'    /.'             .'  \`\           %s"
+""$c1"  /L  /'   |/      _.-'-\               %s "
+""$c1" /'J       ___.---'\|                   %s"
+""$c1"   |\  .--' V  | \`. \`                   %s "
+""$c1"   |/\`. \`-.     \`._)                    %s"
+""$c1"      / .-.\                            %s"
+""$c1"      \ (  \`\                           "
+""$c1"       \`.\                                  ")
+		;;
+
+		"DragonFlyBSD")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'light red') # Red
+				c2=$(getColor 'white') # White
+				c3=$(getColor 'yellow') #
+				c4=$(getColor 'light red')
+			fi
+			startline="0"
+			fulloutput=(
+"                     "$c1" |                    %s"
+"                    "$c1" .-.                   %s"
+"                   "$c3" ()"$c1"I"$c3"()                  %s"
+"              "$c1" \"==.__:-:__.==\"             %s"
+"              "$c1"\"==.__/~|~\__.==\"            %s"
+"              "$c1"\"==._(  Y  )_.==\"            %s"
+"   "$c2".-'~~\"\"~=--...,__"$c1"\/|\/"$c2"__,...--=~\"\"~~'-. %s"
+"  "$c2"(               ..="$c1"\\\\="$c1"/"$c2"=..               )%s"
+"   "$c2"\`'-.        ,.-\"\`;"$c1"/=\\\\"$c2" ;\"-.,_        .-'\`%s"
+"      "$c2" \`~\"-=-~\` .-~\` "$c1"|=|"$c2" \`~-. \`~-=-\"~\`     %s"
+"       "$c2"     .-~\`    /"$c1"|=|"$c2"\    \`~-.          %s"
+"       "$c2"  .~\`       / "$c1"|=|"$c2" \       \`~.       %s"
+" "$c2"    .-~\`        .'  "$c1"|=|"$c2"  \\\\\`.        \`~-.  %s"
+" "$c2"  (\`     _,.-=\"\`  "$c1"  |=|"$c2"    \`\"=-.,_     \`) %s"
+" "$c2"   \`~\"~\"\`        "$c1"   |=|"$c2"           \`\"~\"~\`  %s"
+"                   "$c1"  /=\                   %s"
+"                   "$c1"  \=/                   %s"
+"                   "$c1"   ^                    %s")
+		;;
+
+		"NetBSD")
+			if [[ "$no_color" != "1" ]]; then
+				c1=$(getColor 'orange') # Orange
+				c2=$(getColor 'white') # White
+			fi
+			startline="0"
+			fulloutput=(
+"                                  "$c1"__,gnnnOCCCCCOObaau,_     %s"
+"   "$c2"_._                    "$c1"__,gnnCCCCCCCCOPF\"''              %s"
+"  "$c2"(N\\\\\\\\"$c1"XCbngg,._____.,gnnndCCCCCCCCCCCCF\"___,,,,___          %s"
+"   "$c2"\\\\N\\\\\\\\"$c1"XCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCOOOOPYvv.     %s"
+"    "$c2"\\\\N\\\\\\\\"$c1"XCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCPF\"''               %s"
+"     "$c2"\\\\N\\\\\\\\"$c1"XCCCCCCCCCCCCCCCCCCCCCCCCCOF\"'                     %s"
+"      "$c2"\\\\N\\\\\\\\"$c1"XCCCCCCCCCCCCCCCCCCCCOF\"'                         %s"
+"       "$c2"\\\\N\\\\\\\\"$c1"XCCCCCCCCCCCCCCCPF\"'                             %s"
+"        "$c2"\\\\N\\\\\\\\"$c1"\"PCOCCCOCCFP\"\"                                  %s"
+"         "$c2"\\\\N\                                                %s"
+"          "$c2"\\\\N\                                               %s"
+"           "$c2"\\\\N\                                              %s"
+"            "$c2"\\\\NN\                                            %s"
+"             "$c2"\\\\NN\                                           %s"
+"              "$c2"\\\\NNA.                                         %s"
+"               "$c
